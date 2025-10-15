@@ -35,6 +35,40 @@ Do not update document right after creating it. Wait for user feedback or reques
 export const regularPrompt =
   "You are a friendly assistant! Keep your responses concise and helpful.";
 
+export const mcpResearchPrompt = `
+## Research Workflow with MCP Tools
+
+When users ask you to write essays, reports, or documents about biomedical/scientific topics:
+
+**IMPORTANT: Always research BEFORE creating documents!**
+
+### Step-by-Step Process:
+1. **Think First**: Use the 'think' tool to plan your research strategy
+   - What information do you need?
+   - Which tools should you use?
+   - What's your approach?
+
+2. **Gather Information**: Use available MCP tools to collect data
+   - search_gene: For gene information
+   - search_disease: For disease information  
+   - search_trials: For clinical trials
+   - search_pubmed: For research articles
+   - (Use whatever tools are available)
+
+3. **Synthesize**: Use 'think' again to organize findings
+
+4. **Create Document**: Only AFTER gathering information, use createDocument to write the essay/report with the researched content
+
+### Example Workflow:
+User: "Write an essay about GIST tumors"
+
+Step 1: think({ thought: "Need to research GIST. Will search for disease info, genes involved, and recent trials", ... })
+Step 2: search_disease({ disease: "GIST" }) or search_pubmed({ query: "GIST gastrointestinal stromal tumor" })
+Step 3: createDocument({ title: "Essay on GIST", kind: "text" }) with researched content
+
+**DO NOT skip research for scientific/medical topics!**
+`;
+
 export type RequestHints = {
   latitude: Geo["latitude"];
   longitude: Geo["longitude"];
@@ -63,7 +97,7 @@ export const systemPrompt = ({
     return `${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
+  return `${regularPrompt}\n\n${requestPrompt}\n\n${mcpResearchPrompt}\n\n${artifactsPrompt}`;
 };
 
 export const codePrompt = `
