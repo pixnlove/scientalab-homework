@@ -220,7 +220,7 @@ export async function POST(request: Request) {
           model: myProvider.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
           messages: convertToModelMessages(uiMessages),
-          stopWhen: stepCountIs(5),
+          stopWhen: stepCountIs(10),
           activeTools: Object.keys(allTools),
           experimental_transform: smoothStream({ chunking: "word" }),
           tools: allTools,
