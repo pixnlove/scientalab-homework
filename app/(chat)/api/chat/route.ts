@@ -2,6 +2,7 @@ import { geolocation } from "@vercel/functions";
 import {
   convertToModelMessages,
   createUIMessageStream,
+  experimental_createMCPClient,
   JsonToSseTransformStream,
   smoothStream,
   stepCountIs,
@@ -84,8 +85,37 @@ export function getStreamContext() {
   return globalStreamContext;
 }
 
+// Create MCP client singleton outside the request handler
+let mcpClientInstance: Awaited<ReturnType<typeof experimental_createMCPClient>> | null = null;
+let mcpToolsCache: Record<string, any> | null = null;
+
+async function getMCPClient() {
+  if (!process.env.MCP_SERVER_URL) {
+    throw new Error('MCP_SERVER_URL environment variable is not set');
+  }
+  if (!mcpClientInstance) {
+    try {
+      mcpClientInstance = await experimental_createMCPClient({
+        transport: {
+          url: process.env.MCP_SERVER_URL,
+          type: "sse"
+        },
+      });
+      mcpToolsCache = await mcpClientInstance.tools();
+      console.log("✅ MCP client connected. Available tools:", Object.keys(mcpToolsCache));
+    } catch (error) {
+      console.error("❌ Failed to connect to MCP server:", error);
+      // Return empty tools if connection fails
+      return { tools: {} };
+    }
+  }
+  return { client: mcpClientInstance, tools: mcpToolsCache || {} };
+}
+
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
+
+  const { tools: mcpTools } = await getMCPClient();
 
   try {
     const json = await request.json();
@@ -175,33 +205,33 @@ export async function POST(request: Request) {
 
     const stream = createUIMessageStream({
       execute: ({ writer: dataStream }) => {
+        const allTools: Record<string, any> = {
+          ...mcpTools,
+          getWeather,
+          createDocument: createDocument({ session, dataStream }),
+          updateDocument: updateDocument({ session, dataStream }),
+          requestSuggestions: requestSuggestions({
+            session,
+            dataStream,
+          }),
+        };
+
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
           messages: convertToModelMessages(uiMessages),
           stopWhen: stepCountIs(5),
-          experimental_activeTools:
-            selectedChatModel === "chat-model-reasoning"
-              ? []
-              : [
-                  "getWeather",
-                  "createDocument",
-                  "updateDocument",
-                  "requestSuggestions",
-                ],
+          activeTools: Object.keys(allTools),
           experimental_transform: smoothStream({ chunking: "word" }),
-          tools: {
-            getWeather,
-            createDocument: createDocument({ session, dataStream }),
-            updateDocument: updateDocument({ session, dataStream }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-            }),
-          },
+          tools: allTools,
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
             functionId: "stream-text",
+          },
+          onStepFinish: ({ toolCalls, toolResults }) => {
+            // ⭐ ADD THIS to see what tools are being called
+            console.log("🔧 Tool calls:", toolCalls?.map(t => t.toolName));
+            console.log("📊 Tool results size:", JSON.stringify(toolResults).length);
           },
           onFinish: async ({ usage }) => {
             try {
